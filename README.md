@@ -10,9 +10,9 @@ Then `npm run dev` inside the main folder.
 Open browser in `http://localhost:5173/`
 Success!
 
-##Hosted server: TBD
+## Hosted server: TBD
 
-##TODO:
+## TODO:
 - No ties allowed
 - Aesthetics improvement- logo, font, css stuff
 - Resolve the component monolith
