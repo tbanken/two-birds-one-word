@@ -1,16 +1,23 @@
-# React + Vite
+# TWO BIRDS ONE WORD
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Instructions:
+The host chooses two words, generated at random. The players must choose one word that associates best with both of the words chosen by the host. The players must then explain the association to the host, and the host will judge each player, and crown a winner. Once a player wins three rounds, the player wins the game.
 
-Currently, two official plugins are available:
+## Local run instructions:
+Clone the repo locally. 
+Then run `node index.js` inside the "server" folder. 
+Then `npm run dev` inside the main folder.
+Open browser in `http://localhost:5173/`
+Success!
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+##Hosted server: TBD
 
-## React Compiler
+##TODO:
+- No ties allowed
+- Aesthetics improvement- logo, font, css stuff
+- Resolve the component monolith
+- QoL improvements for any oddities(back button, resolving notifications(eg "Host has left the game")
+- Proper deployment
+- Fun domain name
+- Infrastructure to scale to have many instances of game at once(deployment maybe fixes this)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
