@@ -1,232 +1,292 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useGameSocket } from './hooks/useGameSocket';
 
-const BOT_WORDS = ['bridge', 'connection', 'balance', 'harmony', 'nature', 'force', 'energy', 'space', 'time', 'water', 'air', 'earth', 'spirit', 'wave', 'flow'];
+// Paper-style CSS
+const paperStyles = `
+  @import url('https://fonts.googleapis.com/css2?family=Handlee&display=swap');
+  
+  .paper-bg {
+    background-color: #f5f1e8;
+    background-image: 
+      linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  
+  .paper-card {
+    background: linear-gradient(135deg, #fffef9 0%, #f9f6ee 50%, #f5f1e6 100%);
+    box-shadow: 2px 3px 8px rgba(0,0,0,0.08), inset 0 0 60px rgba(255,255,255,0.3);
+    border: 1px solid #e8e0d0;
+    position: relative;
+  }
+  
+  .paper-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+  
+  .hand-drawn-box {
+    border: 2px solid #4a4a4a;
+    border-radius: 2px;
+    transform: rotate(-0.2deg);
+    box-shadow: 1px 2px 0 rgba(0,0,0,0.1);
+  }
+  
+  .hand-drawn-box-alt {
+    border: 2px solid #4a4a4a;
+    border-radius: 2px;
+    transform: rotate(0.3deg);
+    box-shadow: -1px 2px 0 rgba(0,0,0,0.1);
+  }
+  
+  .pencil-line {
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, #5a5a5a 5%, #4a4a4a 50%, #5a5a5a 95%, transparent 100%);
+    transform: rotate(-0.5deg);
+  }
+  
+  .font-hand {
+    font-family: 'Handlee', cursive;
+  }
+  
+  .font-sketch {
+    font-family: 'Handlee', cursive;
+  }
+  
+  .btn-paper {
+    background: linear-gradient(180deg, #fdfcf8 0%, #f0ebe0 100%);
+    border: 2px solid #4a4a4a;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.15);
+    transition: all 0.1s ease;
+    transform: rotate(-0.2deg);
+  }
+  
+  .btn-paper:hover {
+    transform: rotate(0deg) translateY(-1px);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.15);
+  }
+  
+  .btn-paper:active {
+    transform: rotate(-0.1deg) translateY(1px);
+    box-shadow: 1px 1px 0 rgba(0,0,0,0.15);
+  }
+  
+  .btn-paper:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .btn-dark {
+    background: linear-gradient(180deg, #4a4a4a 0%, #3a3a3a 100%);
+    color: #f5f1e8;
+    border: 2px solid #2a2a2a;
+  }
+  
+  .btn-accent {
+    background: linear-gradient(180deg, #7c9885 0%, #5a7a63 100%);
+    color: #f5f1e8;
+    border: 2px solid #4a6a53;
+  }
+  
+  .input-paper {
+    background: #fffef9;
+    border: 2px solid #4a4a4a;
+    box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05);
+  }
+  
+  .input-paper:focus {
+    outline: none;
+    border-color: #2a2a2a;
+    box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05), 0 0 0 2px rgba(74,74,74,0.1);
+  }
+  
+  .tag-paper {
+    background: #f0ebe0;
+    border: 1px solid #c9c2b4;
+    transform: rotate(-0.5deg);
+  }
+  
+  .tag-dark {
+    background: #4a4a4a;
+    color: #f5f1e8;
+    border: 1px solid #3a3a3a;
+  }
+  
+  .words-banner {
+    background: linear-gradient(135deg, #f5f1e8 0%, #e8e0d0 100%);
+    border: 2px solid #4a4a4a;
+    position: relative;
+  }
+  
+  .words-banner::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 20px;
+    right: 20px;
+    height: 4px;
+    background: #4a4a4a;
+  }
+  
+  .win-dot {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #4a4a4a;
+    border-radius: 50%;
+    background: #fffef9;
+  }
+  
+  .win-dot-filled {
+    background: #4a4a4a;
+  }
+  
+  .connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+`;
 
 export default function TwoBirdsOneWord() {
-  // Game config
-  const [roundLength, setRoundLength] = useState(30);
-  const [roundsToWin, setRoundsToWin] = useState(3);
-  const [showSettings, setShowSettings] = useState(false);
+  const { isConnected, playerId, gameState, error, timeLeft, actions } = useGameSocket();
   
-  // Game state
-  const [screen, setScreen] = useState('lobby'); // lobby, waiting, preround, playing, judging, results, gameover
-  const [gameCode, setGameCode] = useState('');
+  const [screen, setScreen] = useState('lobby');
   const [username, setUsername] = useState('');
+  const [gameCode, setGameCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
-  const [isLoadingWords, setIsLoadingWords] = useState(false);
-  
-  // Players
-  const [players, setPlayers] = useState([]);
-  const [currentPlayerId, setCurrentPlayerId] = useState(null);
-  const [hostId, setHostId] = useState(null);
-  
-  // Round state
-  const [roundNumber, setRoundNumber] = useState(0);
-  const [word1, setWord1] = useState('');
-  const [word2, setWord2] = useState('');
-  const [timeLeft, setTimeLeft] = useState(30);
-  const [timerActive, setTimerActive] = useState(false);
-  const [submissions, setSubmissions] = useState({});
   const [inputWord, setInputWord] = useState('');
-  
-  // Ratings - flat structure: { vistorid_0: 3, playerId_1: 2 }
-  const [ratings, setRatings] = useState({});
-  
-  // Scores
-  const [roundWins, setRoundWins] = useState({});
-  const [totalPoints, setTotalPoints] = useState({});
-  const [roundResults, setRoundResults] = useState([]);
-  const [winner, setWinner] = useState(null);
+  const [localWords, setLocalWords] = useState(['', '']);
+  const [isLoadingWords, setIsLoadingWords] = useState(false);
+  const [localSettings, setLocalSettings] = useState({ roundLength: 30, roundsToWin: 3 });
+  const [showSettings, setShowSettings] = useState(false);
 
-  // Timer
+  // Inject styles
   useEffect(() => {
-    if (!timerActive || timeLeft <= 0) {
-      if (timerActive && timeLeft <= 0) {
-        setTimerActive(false);
-        setScreen('judging');
+    const styleEl = document.createElement('style');
+    styleEl.textContent = paperStyles;
+    document.head.appendChild(styleEl);
+    return () => document.head.removeChild(styleEl);
+  }, []);
+
+  // Sync screen with game state
+  useEffect(() => {
+    if (gameState) {
+      setScreen(gameState.state);
+      if (gameState.words) {
+        setLocalWords(gameState.words);
       }
-      return;
+      if (gameState.settings) {
+        setLocalSettings(gameState.settings);
+      }
     }
-    const t = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-    return () => clearTimeout(t);
-  }, [timerActive, timeLeft]);
+  }, [gameState]);
 
-  // Helpers
-  const currentPlayer = players.find(p => p.id === currentPlayerId);
-  const isHost = currentPlayer?.isHost;
-  const activePlayers = players.filter(p => !p.isHost);
-  const hasSubmitted = Boolean(submissions[currentPlayerId]);
-
-  const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+  // Derived state
+  const isHost = playerId && gameState?.hostId === playerId;
+  const currentPlayer = gameState?.players?.find(p => p.id === playerId);
+  const activePlayers = gameState?.players?.filter(p => !p.isHost) || [];
+  const hasSubmitted = Boolean(gameState?.submissions?.[playerId]);
+  const roundWins = gameState?.roundWins || {};
+  const totalPoints = gameState?.totalPoints || {};
+  const submissions = gameState?.submissions || {};
+  const ratings = gameState?.ratings || {};
+  const roundResults = gameState?.roundResults || [];
 
   const fetchWords = async () => {
     setIsLoadingWords(true);
     try {
       const res = await fetch('https://random-word-api.herokuapp.com/word?number=2&length=5');
       const words = await res.json();
-      setWord1(words[0]);
-      setWord2(words[1]);
+      return [words[0], words[1]];
     } catch {
       const fallback = ['ocean', 'fire', 'dream', 'stone', 'cloud', 'river', 'flame', 'storm'];
-      setWord1(fallback[Math.floor(Math.random() * fallback.length)]);
-      setWord2(fallback[Math.floor(Math.random() * fallback.length)]);
+      return [
+        fallback[Math.floor(Math.random() * fallback.length)],
+        fallback[Math.floor(Math.random() * fallback.length)]
+      ];
+    } finally {
+      setIsLoadingWords(false);
     }
-    setIsLoadingWords(false);
   };
 
-  const createGame = () => {
+  const handleCreateGame = () => {
     if (!username.trim()) return;
-    const id = 'host_' + Date.now();
-    const code = generateCode();
-    setGameCode(code);
-    setCurrentPlayerId(id);
-    setHostId(id);
-    setPlayers([{ id, name: username.trim(), isHost: true }]);
-    setScreen('waiting');
+    actions.createGame(username.trim());
   };
 
-  const joinGame = () => {
-    if (!username.trim()) return;
-    const id = 'player_' + Date.now();
-    setCurrentPlayerId(id);
-    setPlayers(prev => [...prev, { id, name: username.trim(), isHost: false }]);
-    setRoundWins(prev => ({ ...prev, [id]: 0 }));
-    setScreen('waiting');
+  const handleJoinGame = () => {
+    if (!username.trim() || !gameCode) return;
+    actions.joinGame(gameCode, username.trim());
   };
 
-  const addBot = () => {
-    const names = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'];
-    const used = players.map(p => p.name);
-    const available = names.filter(n => !used.includes(n));
-    if (!available.length) return;
-    const id = 'bot_' + Date.now();
-    setPlayers(prev => [...prev, { id, name: available[0], isHost: false, isBot: true }]);
-    setRoundWins(prev => ({ ...prev, [id]: 0 }));
+  const handleStartPreRound = async () => {
+    const words = await fetchWords();
+    actions.startPreRound(words[0], words[1]);
   };
 
-  const startPreRound = async () => {
-    await fetchWords();
-    setSubmissions({});
-    setRatings({});
-    setInputWord('');
-    setRoundNumber(prev => prev + 1);
-    
-    // Initialize roundWins for all players if not set
-    const newRoundWins = { ...roundWins };
-    activePlayers.forEach(p => {
-      if (newRoundWins[p.id] === undefined) {
-        newRoundWins[p.id] = 0;
-      }
-    });
-    setRoundWins(newRoundWins);
-    
-    setScreen('preround');
+  const handleRegenerateWords = async () => {
+    const words = await fetchWords();
+    actions.updateWords(words[0], words[1]);
   };
 
-  const startPlaying = () => {
-    setTimeLeft(roundLength);
-    setTimerActive(true);
-    setScreen('playing');
-    
-    // Bot submissions
-    players.filter(p => p.isBot).forEach(bot => {
-      setTimeout(() => {
-        setSubmissions(prev => ({
-          ...prev,
-          [bot.id]: BOT_WORDS[Math.floor(Math.random() * BOT_WORDS.length)]
-        }));
-      }, Math.random() * (roundLength * 500) + 2000);
-    });
-  };
-
-  const submitWord = () => {
+  const handleSubmitWord = () => {
     if (!inputWord.trim()) return;
-    setSubmissions(prev => ({ ...prev, [currentPlayerId]: inputWord.trim().toLowerCase() }));
+    actions.submitWord(inputWord.trim());
     setInputWord('');
   };
 
-  const endRoundEarly = () => {
-    setTimerActive(false);
-    setScreen('judging');
+  const getRate = (odplayerId, wordIdx) => {
+    return ratings[odplayerId + '_' + wordIdx];
   };
 
-  const handleRate = (playerId, wordIdx, value) => {
-    const key = playerId + '_' + wordIdx;
-    setRatings(prev => ({ ...prev, [key]: value }));
+  const handleRate = (odplayerId, wordIdx, value) => {
+    actions.submitRating(odplayerId, wordIdx, value);
   };
 
-  const getRate = (playerId, wordIdx) => {
-    return ratings[playerId + '_' + wordIdx];
+  const handleSettingsChange = (roundLength, roundsToWin) => {
+    setLocalSettings({ roundLength, roundsToWin });
+    actions.updateSettings(roundLength, roundsToWin);
   };
 
-  const finishJudging = () => {
-    const results = activePlayers
-      .filter(p => submissions[p.id] && getRate(p.id, 0) !== undefined && getRate(p.id, 1) !== undefined)
-      .map(p => ({
-        id: p.id,
-        name: p.name,
-        word: submissions[p.id],
-        r1: getRate(p.id, 0),
-        r2: getRate(p.id, 1),
-        total: getRate(p.id, 0) + getRate(p.id, 1)
-      }))
-      .sort((a, b) => a.total - b.total);
-
-    setRoundResults(results);
-
-    // Update points
-    const newPoints = { ...totalPoints };
-    results.forEach(r => {
-      newPoints[r.id] = (newPoints[r.id] || 0) + r.total;
-    });
-    setTotalPoints(newPoints);
-
-    // Round winner
-    if (results.length > 0) {
-      const winnerId = results[0].id;
-      const newWins = { ...roundWins, [winnerId]: (roundWins[winnerId] || 0) + 1 };
-      setRoundWins(newWins);
-
-      if (newWins[winnerId] >= roundsToWin) {
-        setWinner(players.find(p => p.id === winnerId));
-        setScreen('gameover');
-        return;
-      }
-    }
-    setScreen('results');
+  const handleResetGame = () => {
+    actions.resetGame();
+    setScreen('waiting');
   };
 
-  const resetGame = () => {
+  const handleBackToLobby = () => {
     setScreen('lobby');
-    setPlayers([]);
-    setCurrentPlayerId(null);
-    setHostId(null);
-    setRoundWins({});
-    setTotalPoints({});
-    setRoundNumber(0);
-    setWinner(null);
     setGameCode('');
     setUsername('');
-    setSubmissions({});
-    setRatings({});
-    setRoundResults([]);
-    setWord1('');
-    setWord2('');
-    setRoundLength(30);
-    setRoundsToWin(3);
   };
 
-  // Render helpers
-  const WinDots = ({ playerId }) => (
+  // Components
+  const WinDots = ({ odplayerId }) => (
     <div className="flex gap-1">
-      {Array.from({ length: roundsToWin }).map((_, i) => (
-        <div key={i} className={`w-3 h-3 rounded-full ${i < (roundWins[playerId] || 0) ? 'bg-green-500' : 'bg-slate-300'}`} />
+      {Array.from({ length: localSettings.roundsToWin }).map((_, i) => (
+        <div key={i} className={`win-dot ${i < (roundWins[odplayerId] || 0) ? 'win-dot-filled' : ''}`} />
       ))}
     </div>
   );
 
+  const ConnectionStatus = () => (
+    <div className="fixed top-4 right-4 flex items-center gap-2 tag-paper px-3 py-1">
+      <div className={`connection-dot ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+      <span className="font-hand text-sm">{isConnected ? 'Connected' : 'Disconnected'}</span>
+    </div>
+  );
+
+  const ErrorToast = () => error && (
+    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 hand-drawn-box bg-red-100 px-4 py-2">
+      <span className="font-hand text-red-700">{error}</span>
+    </div>
+  );
+
   const Scoreboard = ({ highlight }) => {
-    // Get all active players and ensure they have a roundWins entry
     const playersWithWins = activePlayers.map(p => ({
       ...p,
       wins: roundWins[p.id] || 0,
@@ -234,28 +294,22 @@ export default function TwoBirdsOneWord() {
     })).sort((a, b) => b.wins - a.wins);
 
     return (
-      <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
-        <h3 className="font-semibold text-center text-indigo-800 mb-3">🏆 Scoreboard (First to {roundsToWin})</h3>
+      <div className="hand-drawn-box bg-white p-4">
+        <h3 className="font-sketch text-2xl text-center mb-3">Scoreboard (First to {localSettings.roundsToWin})</h3>
         {playersWithWins.length === 0 ? (
-          <p className="text-center text-slate-500 py-2">No players yet</p>
+          <p className="text-center text-gray-500 font-hand">No players yet</p>
         ) : (
           <div className="space-y-2">
             {playersWithWins.map((p, i) => (
-              <div key={p.id} className={`flex items-center justify-between p-3 rounded-lg ${highlight === p.id ? 'bg-indigo-100 border border-indigo-300' : 'bg-white'}`}>
+              <div key={p.id} className={`flex items-center justify-between p-3 ${highlight === p.id ? 'tag-paper' : 'bg-gray-50'}`} style={{ transform: `rotate(${(i % 2 === 0 ? -0.3 : 0.3)}deg)` }}>
                 <div className="flex items-center gap-2">
-                  <span className="w-6 text-center">{i === 0 && p.wins > 0 ? '👑' : ''}</span>
-                  <span className="font-medium">{p.name}{highlight === p.id ? ' (you)' : ''}</span>
-                  {p.isBot && <span className="text-xs bg-slate-200 px-2 py-0.5 rounded-full">Bot</span>}
+                  <span className="font-hand text-lg">{p.name}{highlight === p.id ? ' (you)' : ''}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="flex gap-1">
-                    {Array.from({ length: roundsToWin }).map((_, j) => (
-                      <div key={j} className={`w-4 h-4 rounded-full ${j < p.wins ? 'bg-green-500' : 'bg-slate-300'}`} />
-                    ))}
-                  </div>
-                  <div className="text-right min-w-24">
-                    <p className="font-bold text-lg">{p.wins} {p.wins === 1 ? 'win' : 'wins'}</p>
-                    <p className="text-xs text-slate-400">{p.points} total pts</p>
+                  <WinDots odplayerId={p.id} />
+                  <div className="text-right">
+                    <p className="font-sketch text-xl">{p.wins} {p.wins === 1 ? 'win' : 'wins'}</p>
+                    <p className="text-xs text-gray-500 font-hand">{p.points} pts</p>
                   </div>
                 </div>
               </div>
@@ -269,45 +323,61 @@ export default function TwoBirdsOneWord() {
   // SCREENS
 
   // Lobby
-  if (screen === 'lobby') {
+  if (screen === 'lobby' || !gameState) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-          <h1 className="text-3xl font-bold text-center mb-2">🐦 Two Birds One Word 🐦</h1>
-          <p className="text-slate-500 text-center mb-6">Find one word that connects two random words!</p>
+      <div className="min-h-screen paper-bg flex items-center justify-center p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="paper-card rounded-sm p-8 max-w-md w-full" style={{ transform: 'rotate(-0.5deg)' }}>
+          <h1 className="font-sketch text-5xl text-center mb-1 text-gray-800">Two Birds</h1>
+          <h2 className="font-sketch text-3xl text-center mb-2 text-gray-600">One Word</h2>
+          <div className="pencil-line w-32 mx-auto mb-4"></div>
+          <p className="text-gray-500 text-center mb-6 font-hand text-lg">Find one word that connects two random words</p>
           
           <input
             type="text"
-            placeholder="Enter your name"
+            placeholder="Your name..."
             value={username}
             onChange={e => setUsername(e.target.value)}
-            className="w-full p-3 border-2 border-slate-200 rounded-lg mb-4"
+            className="w-full p-3 input-paper rounded-sm mb-4 font-hand text-lg"
             maxLength={20}
           />
           
           {!isJoining ? (
             <div className="space-y-3">
-              <button onClick={createGame} disabled={!username.trim()} className="w-full bg-amber-500 text-white py-3 rounded-lg font-semibold disabled:opacity-50">
-                🎯 Host a Game
+              <button 
+                onClick={handleCreateGame} 
+                disabled={!username.trim() || !isConnected} 
+                className="w-full btn-paper btn-dark py-3 rounded-sm font-hand text-lg"
+              >
+                Host a Game
               </button>
-              <button onClick={() => setIsJoining(true)} disabled={!username.trim()} className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold disabled:opacity-50">
-                🎮 Join as Player
+              <button 
+                onClick={() => setIsJoining(true)} 
+                disabled={!username.trim() || !isConnected} 
+                className="w-full btn-paper py-3 rounded-sm font-hand text-lg"
+              >
+                Join as Player
               </button>
             </div>
           ) : (
             <div className="space-y-3">
               <input
                 type="text"
-                placeholder="Game code"
+                placeholder="Game code..."
                 value={gameCode}
                 onChange={e => setGameCode(e.target.value.toUpperCase())}
-                className="w-full p-3 border-2 border-slate-200 rounded-lg text-center text-xl tracking-widest"
+                className="w-full p-3 input-paper rounded-sm text-center text-xl tracking-widest font-hand"
                 maxLength={6}
               />
-              <button onClick={joinGame} disabled={!username.trim() || gameCode.length < 4} className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold disabled:opacity-50">
+              <button 
+                onClick={handleJoinGame} 
+                disabled={!username.trim() || gameCode.length < 4 || !isConnected} 
+                className="w-full btn-paper btn-dark py-3 rounded-sm font-hand text-lg"
+              >
                 Join
               </button>
-              <button onClick={() => setIsJoining(false)} className="w-full text-slate-500 py-2">Back</button>
+              <button onClick={() => setIsJoining(false)} className="w-full text-gray-500 py-2 font-hand">Back</button>
             </div>
           )}
         </div>
@@ -318,66 +388,82 @@ export default function TwoBirdsOneWord() {
   // Waiting - Host
   if (screen === 'waiting' && isHost) {
     return (
-      <div className="min-h-screen bg-amber-50 p-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6">
+      <div className="min-h-screen paper-bg p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(0.3deg)' }}>
           <div className="flex justify-between items-start mb-4">
             <div>
-              <p className="text-sm text-amber-600 font-medium">HOST VIEW</p>
-              <h2 className="text-2xl font-bold">Game Lobby</h2>
+              <p className="text-sm text-gray-500 font-hand">Host View</p>
+              <h2 className="font-sketch text-3xl">Game Lobby</h2>
             </div>
             <div className="text-right">
-              <p className="text-sm text-slate-500">Code</p>
-              <p className="text-3xl font-mono font-bold text-amber-600">{gameCode}</p>
+              <p className="text-sm text-gray-500 font-hand">Code</p>
+              <p className="font-sketch text-3xl tracking-wider">{gameState.code}</p>
             </div>
           </div>
 
-          <div className="bg-slate-50 rounded-xl p-4 mb-4">
-            <h3 className="font-semibold mb-3">Players ({activePlayers.length})</h3>
+          <div className="hand-drawn-box p-4 mb-4 bg-white">
+            <h3 className="font-hand text-lg mb-3">Players ({activePlayers.length})</h3>
             {activePlayers.length === 0 ? (
-              <p className="text-slate-400 text-center py-4">Waiting for players...</p>
+              <p className="text-gray-400 text-center py-4 font-hand">Waiting for players to join...</p>
             ) : (
               <div className="space-y-2">
-                {activePlayers.map(p => (
-                  <div key={p.id} className="flex justify-between bg-white p-3 rounded-lg border">
-                    <span>{p.name}</span>
-                    {p.isBot && <span className="bg-slate-200 text-xs px-2 py-1 rounded-full">Bot</span>}
+                {activePlayers.map((p, i) => (
+                  <div key={p.id} className="flex justify-between tag-paper p-3" style={{ transform: `rotate(${i % 2 === 0 ? -0.3 : 0.4}deg)` }}>
+                    <span className="font-hand">{p.name}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="bg-amber-50 rounded-xl p-4 mb-4 border border-amber-200">
-            <button onClick={() => setShowSettings(!showSettings)} className="flex justify-between w-full">
-              <span className="font-semibold text-amber-800">⚙️ Settings</span>
-              <span>{showSettings ? '▲' : '▼'}</span>
+          <div className="hand-drawn-box-alt p-4 mb-4 bg-white">
+            <button onClick={() => setShowSettings(!showSettings)} className="flex justify-between w-full font-hand text-lg">
+              <span>Settings</span>
+              <span>{showSettings ? '−' : '+'}</span>
             </button>
             {showSettings ? (
               <div className="mt-4 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Round Length: {roundLength}s</label>
-                  <input type="range" min="10" max="120" step="5" value={roundLength} onChange={e => setRoundLength(Number(e.target.value))} className="w-full" />
+                  <label className="block text-sm font-hand mb-2">Round Length: {localSettings.roundLength}s</label>
+                  <input 
+                    type="range" 
+                    min="10" 
+                    max="120" 
+                    step="5" 
+                    value={localSettings.roundLength} 
+                    onChange={e => handleSettingsChange(Number(e.target.value), localSettings.roundsToWin)} 
+                    className="w-full" 
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Rounds to Win: {roundsToWin}</label>
+                  <label className="block text-sm font-hand mb-2">Rounds to Win: {localSettings.roundsToWin}</label>
                   <div className="flex gap-2">
                     {[1,2,3,4,5].map(n => (
-                      <button key={n} onClick={() => setRoundsToWin(n)} className={`flex-1 py-2 rounded-lg font-semibold ${roundsToWin === n ? 'bg-amber-500 text-white' : 'bg-white border'}`}>{n}</button>
+                      <button 
+                        key={n} 
+                        onClick={() => handleSettingsChange(localSettings.roundLength, n)} 
+                        className={`flex-1 py-2 rounded-sm font-hand ${localSettings.roundsToWin === n ? 'btn-paper btn-dark' : 'btn-paper'}`}
+                      >
+                        {n}
+                      </button>
                     ))}
                   </div>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-amber-700 mt-2">{roundLength}s rounds · First to {roundsToWin}</p>
+              <p className="text-sm text-gray-500 mt-2 font-hand">{localSettings.roundLength}s rounds, first to {localSettings.roundsToWin}</p>
             )}
           </div>
 
-          <div className="flex gap-3">
-            <button onClick={addBot} className="flex-1 bg-slate-200 py-3 rounded-lg font-medium">+ Add Bot</button>
-            <button onClick={startPreRound} disabled={activePlayers.length < 1 || isLoadingWords} className="flex-1 bg-green-500 text-white py-3 rounded-lg font-semibold disabled:opacity-50">
-              {isLoadingWords ? 'Loading...' : 'Start Game'}
-            </button>
-          </div>
+          <button 
+            onClick={handleStartPreRound} 
+            disabled={activePlayers.length < 2 || isLoadingWords} 
+            className="w-full btn-paper btn-accent py-3 rounded-sm font-hand"
+          >
+            {isLoadingWords ? 'Loading...' : activePlayers.length < 2 ? 'Need at least 2 players' : 'Start Game'}
+          </button>
         </div>
       </div>
     );
@@ -385,18 +471,20 @@ export default function TwoBirdsOneWord() {
 
   // Waiting - Player
   if (screen === 'waiting' && !isHost) {
-    const host = players.find(p => p.isHost);
+    const host = gameState?.players?.find(p => p.isHost);
     return (
-      <div className="min-h-screen bg-indigo-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-4xl mb-4">🎮</div>
-          <h2 className="text-2xl font-bold mb-2">You're In!</h2>
-          <p className="text-slate-500 mb-6">Waiting for <span className="font-semibold text-amber-600">{host?.name}</span> to start...</p>
-          <div className="bg-slate-50 rounded-xl p-4">
+      <div className="min-h-screen paper-bg flex items-center justify-center p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="paper-card rounded-sm p-8 max-w-md w-full text-center" style={{ transform: 'rotate(-0.4deg)' }}>
+          <h2 className="font-sketch text-3xl mb-2">You're In!</h2>
+          <div className="pencil-line w-24 mx-auto mb-4"></div>
+          <p className="text-gray-500 mb-6 font-hand text-lg">Waiting for {host?.name} to start...</p>
+          <div className="hand-drawn-box p-4 bg-white">
             <div className="flex flex-wrap justify-center gap-2">
-              {activePlayers.map(p => (
-                <span key={p.id} className={`px-3 py-1 rounded-full text-sm ${p.id === currentPlayerId ? 'bg-indigo-600 text-white' : 'bg-slate-200'}`}>
-                  {p.name}{p.id === currentPlayerId ? ' (you)' : ''}
+              {activePlayers.map((p, i) => (
+                <span key={p.id} className={`px-3 py-1 font-hand ${p.id === playerId ? 'tag-dark' : 'tag-paper'}`} style={{ transform: `rotate(${i % 2 === 0 ? -1 : 1}deg)` }}>
+                  {p.name}{p.id === playerId ? ' (you)' : ''}
                 </span>
               ))}
             </div>
@@ -409,43 +497,45 @@ export default function TwoBirdsOneWord() {
   // Pre-round - Host
   if (screen === 'preround' && isHost) {
     return (
-      <div className="min-h-screen bg-amber-50 p-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6">
+      <div className="min-h-screen paper-bg p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(-0.2deg)' }}>
           <div className="flex justify-between items-start mb-4">
             <div>
-              <p className="text-sm text-amber-600 font-medium">HOST VIEW</p>
-              <h2 className="text-2xl font-bold">Round {roundNumber}</h2>
+              <p className="text-sm text-gray-500 font-hand">Host View</p>
+              <h2 className="font-sketch text-3xl">Round {gameState.roundNumber}</h2>
             </div>
-            <div className="text-sm text-slate-500 text-right">
-              <p>{roundLength}s round</p>
-              <p>First to {roundsToWin}</p>
+            <div className="text-sm text-gray-500 text-right font-hand">
+              <p>{localSettings.roundLength}s round</p>
+              <p>First to {localSettings.roundsToWin}</p>
             </div>
           </div>
 
           <div className="flex justify-center gap-3 mb-6">
-            {activePlayers.filter(p => !p.isBot).map(p => (
-              <div key={p.id} className="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-full">
-                <span className="text-sm font-medium">{p.name}</span>
-                <WinDots playerId={p.id} />
+            {activePlayers.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-2 tag-paper px-3 py-2" style={{ transform: `rotate(${i % 2 === 0 ? -0.5 : 0.5}deg)` }}>
+                <span className="text-sm font-hand">{p.name}</span>
+                <WinDots odplayerId={p.id} />
               </div>
             ))}
           </div>
 
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl p-8 mb-4 text-center text-white">
-            <p className="text-sm opacity-80 mb-3">This Round's Words</p>
+          <div className="words-banner rounded-sm p-8 mb-4 text-center" style={{ transform: 'rotate(0.2deg)' }}>
+            <p className="text-sm text-gray-500 mb-3 font-hand">This Round's Words</p>
             <div className="flex items-center justify-center gap-6">
-              <span className="text-4xl font-bold">{word1}</span>
-              <span className="text-3xl opacity-60">&</span>
-              <span className="text-4xl font-bold">{word2}</span>
+              <span className="font-sketch text-4xl">{gameState.words[0]}</span>
+              <span className="font-hand text-2xl text-gray-400">&</span>
+              <span className="font-sketch text-4xl">{gameState.words[1]}</span>
             </div>
           </div>
 
-          <button onClick={fetchWords} disabled={isLoadingWords} className="w-full bg-slate-200 py-3 rounded-lg font-medium mb-4">
-            {isLoadingWords ? 'Loading...' : '🎲 Generate Different Words'}
+          <button onClick={handleRegenerateWords} disabled={isLoadingWords} className="w-full btn-paper py-3 rounded-sm font-hand mb-4">
+            {isLoadingWords ? 'Loading...' : 'Generate Different Words'}
           </button>
 
-          <button onClick={startPlaying} className="w-full bg-green-500 text-white py-4 rounded-lg font-bold text-lg">
-            ▶️ Start Round
+          <button onClick={() => actions.startPlaying()} className="w-full btn-paper btn-accent py-4 rounded-sm font-hand text-lg">
+            Start Round
           </button>
         </div>
       </div>
@@ -454,29 +544,31 @@ export default function TwoBirdsOneWord() {
 
   // Pre-round - Player
   if (screen === 'preround' && !isHost) {
-    const host = players.find(p => p.isHost);
+    const host = gameState?.players?.find(p => p.isHost);
     return (
-      <div className="min-h-screen bg-indigo-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full text-center">
-          <p className="text-sm text-indigo-600 font-medium mb-2">Round {roundNumber}</p>
-          <h2 className="text-2xl font-bold mb-4">Get Ready!</h2>
+      <div className="min-h-screen paper-bg flex items-center justify-center p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full text-center" style={{ transform: 'rotate(0.3deg)' }}>
+          <p className="text-sm text-gray-500 font-hand mb-2">Round {gameState.roundNumber}</p>
+          <h2 className="font-sketch text-3xl mb-4">Get Ready!</h2>
 
           <div className="flex justify-center gap-2 mb-6">
-            <span className="text-sm text-slate-500">Your wins:</span>
-            <WinDots playerId={currentPlayerId} />
+            <span className="text-sm text-gray-500 font-hand">Your wins:</span>
+            <WinDots odplayerId={playerId} />
           </div>
 
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl p-6 mb-6 text-white">
-            <p className="text-sm opacity-80 mb-2">This Round's Words</p>
+          <div className="words-banner rounded-sm p-6 mb-6" style={{ transform: 'rotate(-0.3deg)' }}>
+            <p className="text-sm text-gray-500 mb-2 font-hand">This Round's Words</p>
             <div className="flex items-center justify-center gap-4">
-              <span className="text-2xl font-bold">{word1}</span>
-              <span className="text-xl opacity-60">&</span>
-              <span className="text-2xl font-bold">{word2}</span>
+              <span className="font-sketch text-3xl">{gameState.words[0]}</span>
+              <span className="font-hand text-xl text-gray-400">&</span>
+              <span className="font-sketch text-3xl">{gameState.words[1]}</span>
             </div>
           </div>
 
-          <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
-            <p className="text-amber-700">Waiting for <span className="font-semibold">{host?.name}</span> to start...</p>
+          <div className="hand-drawn-box p-4 bg-white">
+            <p className="text-gray-500 font-hand">Waiting for {host?.name} to start...</p>
           </div>
         </div>
       </div>
@@ -486,48 +578,50 @@ export default function TwoBirdsOneWord() {
   // Playing - Host
   if (screen === 'playing' && isHost) {
     return (
-      <div className="min-h-screen bg-amber-50 p-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6">
+      <div className="min-h-screen paper-bg p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(0.2deg)' }}>
           <div className="flex justify-between items-center mb-4">
             <div>
-              <p className="text-sm text-amber-600 font-medium">HOST VIEW</p>
-              <h2 className="text-xl font-bold">Round {roundNumber}</h2>
+              <p className="text-sm text-gray-500 font-hand">Host View</p>
+              <h2 className="font-sketch text-2xl">Round {gameState.roundNumber}</h2>
             </div>
-            <div className={`text-3xl font-mono font-bold ${timeLeft <= 10 ? 'text-red-500' : ''}`}>{timeLeft}s</div>
+            <div className={`font-sketch text-4xl ${timeLeft <= 10 ? 'text-red-600' : ''}`}>{timeLeft}s</div>
           </div>
 
           <div className="flex justify-center gap-3 mb-4">
-            {activePlayers.filter(p => !p.isBot).map(p => (
-              <div key={p.id} className="flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full">
-                <span className="text-sm font-medium">{p.name}</span>
-                <WinDots playerId={p.id} />
+            {activePlayers.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-2 tag-paper px-3 py-1" style={{ transform: `rotate(${i % 2 === 0 ? -0.4 : 0.4}deg)` }}>
+                <span className="text-sm font-hand">{p.name}</span>
+                <WinDots odplayerId={p.id} />
               </div>
             ))}
           </div>
 
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl p-6 mb-4 text-center text-white">
+          <div className="words-banner rounded-sm p-6 mb-4 text-center" style={{ transform: 'rotate(-0.2deg)' }}>
             <div className="flex items-center justify-center gap-4">
-              <span className="text-3xl font-bold">{word1}</span>
-              <span className="text-2xl opacity-60">&</span>
-              <span className="text-3xl font-bold">{word2}</span>
+              <span className="font-sketch text-3xl">{gameState.words[0]}</span>
+              <span className="font-hand text-xl text-gray-400">&</span>
+              <span className="font-sketch text-3xl">{gameState.words[1]}</span>
             </div>
           </div>
 
-          <div className="bg-slate-50 rounded-xl p-4 mb-4">
-            <h3 className="font-semibold mb-3">Submissions ({Object.keys(submissions).length}/{activePlayers.length})</h3>
+          <div className="hand-drawn-box p-4 mb-4 bg-white">
+            <h3 className="font-hand mb-3">Submissions ({Object.keys(submissions).length}/{activePlayers.length})</h3>
             <div className="space-y-2">
-              {activePlayers.map(p => (
-                <div key={p.id} className="flex justify-between bg-white p-3 rounded-lg border">
-                  <span>{p.name}</span>
-                  <span className={submissions[p.id] ? 'text-green-600 font-medium' : 'text-slate-400'}>
-                    {submissions[p.id] ? '✓ Submitted' : 'Waiting...'}
+              {activePlayers.map((p, i) => (
+                <div key={p.id} className="flex justify-between tag-paper p-3" style={{ transform: `rotate(${i % 2 === 0 ? -0.2 : 0.3}deg)` }}>
+                  <span className="font-hand">{p.name}</span>
+                  <span className={`font-hand ${submissions[p.id] ? 'text-green-700' : 'text-gray-400'}`}>
+                    {submissions[p.id] ? 'Submitted' : 'Waiting...'}
                   </span>
                 </div>
               ))}
             </div>
           </div>
 
-          <button onClick={endRoundEarly} className="w-full bg-amber-500 text-white py-3 rounded-lg font-semibold">
+          <button onClick={() => actions.endRound()} className="w-full btn-paper btn-dark py-3 rounded-sm font-hand">
             End Round & Judge
           </button>
         </div>
@@ -538,35 +632,36 @@ export default function TwoBirdsOneWord() {
   // Playing - Player
   if (screen === 'playing' && !isHost) {
     return (
-      <div className="min-h-screen bg-indigo-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full">
+      <div className="min-h-screen paper-bg flex items-center justify-center p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full" style={{ transform: 'rotate(-0.3deg)' }}>
           <div className="flex justify-between items-center mb-4">
             <div>
-              <p className="text-sm text-indigo-600 font-medium">Round {roundNumber}</p>
-              <h2 className="text-xl font-bold">Submit Your Word!</h2>
+              <p className="text-sm text-gray-500 font-hand">Round {gameState.roundNumber}</p>
+              <h2 className="font-sketch text-2xl">Submit Your Word!</h2>
             </div>
-            <div className={`text-3xl font-mono font-bold ${timeLeft <= 10 ? 'text-red-500' : ''}`}>{timeLeft}s</div>
+            <div className={`font-sketch text-4xl ${timeLeft <= 10 ? 'text-red-600' : ''}`}>{timeLeft}s</div>
           </div>
 
           <div className="flex justify-center gap-2 mb-4">
-            <span className="text-sm text-slate-500">Your wins:</span>
-            <WinDots playerId={currentPlayerId} />
+            <span className="text-sm text-gray-500 font-hand">Your wins:</span>
+            <WinDots odplayerId={playerId} />
           </div>
 
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl p-6 mb-6 text-center text-white">
-            <p className="text-sm opacity-80 mb-2">Find one word that connects:</p>
+          <div className="words-banner rounded-sm p-6 mb-6 text-center" style={{ transform: 'rotate(0.2deg)' }}>
+            <p className="text-sm text-gray-500 mb-2 font-hand">Find one word that connects:</p>
             <div className="flex items-center justify-center gap-4">
-              <span className="text-2xl font-bold">{word1}</span>
-              <span className="text-xl opacity-60">&</span>
-              <span className="text-2xl font-bold">{word2}</span>
+              <span className="font-sketch text-2xl">{gameState.words[0]}</span>
+              <span className="font-hand text-lg text-gray-400">&</span>
+              <span className="font-sketch text-2xl">{gameState.words[1]}</span>
             </div>
           </div>
 
           {hasSubmitted ? (
-            <div className="text-center py-6 bg-green-50 rounded-xl border-2 border-green-200">
-              <div className="text-3xl mb-2">✓</div>
-              <p className="text-green-700 font-semibold text-lg">Submitted!</p>
-              <p className="text-green-600 mt-1">"{submissions[currentPlayerId]}"</p>
+            <div className="text-center py-6 hand-drawn-box bg-white">
+              <p className="font-sketch text-2xl text-green-700 mb-1">Submitted!</p>
+              <p className="font-hand text-lg">"{submissions[playerId]}"</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -575,11 +670,11 @@ export default function TwoBirdsOneWord() {
                 placeholder="Type your word..."
                 value={inputWord}
                 onChange={e => setInputWord(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && submitWord()}
-                className="w-full p-4 border-2 border-slate-200 rounded-xl text-lg"
+                onKeyDown={e => e.key === 'Enter' && handleSubmitWord()}
+                className="w-full p-4 input-paper rounded-sm font-hand text-lg"
                 maxLength={30}
               />
-              <button onClick={submitWord} disabled={!inputWord.trim()} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-semibold text-lg disabled:opacity-50">
+              <button onClick={handleSubmitWord} disabled={!inputWord.trim()} className="w-full btn-paper btn-dark py-4 rounded-sm font-hand text-lg">
                 Submit
               </button>
             </div>
@@ -595,49 +690,51 @@ export default function TwoBirdsOneWord() {
     const allRated = toJudge.every(p => getRate(p.id, 0) !== undefined && getRate(p.id, 1) !== undefined);
 
     return (
-      <div className="min-h-screen bg-amber-50 p-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6">
-          <p className="text-sm text-amber-600 font-medium mb-2">HOST VIEW</p>
-          <h2 className="text-2xl font-bold mb-4">Rate Submissions</h2>
+      <div className="min-h-screen paper-bg p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(-0.2deg)' }}>
+          <p className="text-sm text-gray-500 font-hand mb-2">Host View</p>
+          <h2 className="font-sketch text-3xl mb-4">Rate Submissions</h2>
 
           <div className="flex justify-center gap-3 mb-4">
-            {activePlayers.filter(p => !p.isBot).map(p => (
-              <div key={p.id} className="flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full">
-                <span className="text-sm font-medium">{p.name}</span>
-                <WinDots playerId={p.id} />
+            {activePlayers.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-2 tag-paper px-3 py-1" style={{ transform: `rotate(${i % 2 === 0 ? -0.3 : 0.3}deg)` }}>
+                <span className="text-sm font-hand">{p.name}</span>
+                <WinDots odplayerId={p.id} />
               </div>
             ))}
           </div>
 
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl p-4 mb-6 text-center text-white">
-            <p className="text-sm opacity-80 mb-1">Rate connections to:</p>
-            <span className="text-xl font-bold">{word1}</span>
-            <span className="mx-3 opacity-60">&</span>
-            <span className="text-xl font-bold">{word2}</span>
+          <div className="words-banner rounded-sm p-4 mb-6 text-center" style={{ transform: 'rotate(0.2deg)' }}>
+            <p className="text-sm text-gray-500 mb-1 font-hand">Rate connections to:</p>
+            <span className="font-sketch text-xl">{gameState.words[0]}</span>
+            <span className="mx-3 text-gray-400 font-hand">&</span>
+            <span className="font-sketch text-xl">{gameState.words[1]}</span>
           </div>
 
           {toJudge.length === 0 ? (
-            <p className="text-center text-slate-500 py-8">No submissions</p>
+            <p className="text-center text-gray-500 py-8 font-hand">No submissions</p>
           ) : (
             <div className="space-y-6 mb-6">
-              {toJudge.map(p => (
-                <div key={p.id} className="bg-slate-50 rounded-xl p-4">
+              {toJudge.map((p, idx) => (
+                <div key={p.id} className="hand-drawn-box p-4 bg-white" style={{ transform: `rotate(${idx % 2 === 0 ? -0.2 : 0.2}deg)` }}>
                   <div className="flex justify-between items-center mb-4">
-                    <span className="font-medium text-slate-600">{p.name}</span>
-                    <span className="text-xl font-bold text-indigo-600">"{submissions[p.id]}"</span>
+                    <span className="font-hand text-gray-600">{p.name}</span>
+                    <span className="font-sketch text-xl">"{submissions[p.id]}"</span>
                   </div>
 
                   <div className="mb-3">
-                    <p className="text-sm text-slate-500 mb-2">
-                      <span className="font-semibold text-indigo-600">{word1}</span> → <span className="font-semibold">{submissions[p.id]}</span>
+                    <p className="text-sm text-gray-500 mb-2 font-hand">
+                      {gameState.words[0]} → {submissions[p.id]}
                     </p>
                     <div className="flex gap-2">
-                      {[1,2,3,4,5].map(v => (
+                      {[1,2,3].map(v => (
                         <button
                           key={v}
                           type="button"
                           onClick={() => handleRate(p.id, 0, v)}
-                          className={getRate(p.id, 0) === v ? 'flex-1 py-2 rounded-lg font-bold bg-indigo-600 text-white' : 'flex-1 py-2 rounded-lg font-bold bg-white border-2 border-slate-200'}
+                          className={`flex-1 py-3 rounded-sm font-hand text-lg ${getRate(p.id, 0) === v ? 'btn-paper btn-dark' : 'btn-paper'}`}
                         >
                           {v}
                         </button>
@@ -646,16 +743,16 @@ export default function TwoBirdsOneWord() {
                   </div>
 
                   <div className="mb-3">
-                    <p className="text-sm text-slate-500 mb-2">
-                      <span className="font-semibold text-purple-600">{word2}</span> → <span className="font-semibold">{submissions[p.id]}</span>
+                    <p className="text-sm text-gray-500 mb-2 font-hand">
+                      {gameState.words[1]} → {submissions[p.id]}
                     </p>
                     <div className="flex gap-2">
-                      {[1,2,3,4,5].map(v => (
+                      {[1,2,3].map(v => (
                         <button
                           key={v}
                           type="button"
                           onClick={() => handleRate(p.id, 1, v)}
-                          className={getRate(p.id, 1) === v ? 'flex-1 py-2 rounded-lg font-bold bg-purple-600 text-white' : 'flex-1 py-2 rounded-lg font-bold bg-white border-2 border-slate-200'}
+                          className={`flex-1 py-3 rounded-sm font-hand text-lg ${getRate(p.id, 1) === v ? 'btn-paper btn-dark' : 'btn-paper'}`}
                         >
                           {v}
                         </button>
@@ -664,9 +761,9 @@ export default function TwoBirdsOneWord() {
                   </div>
 
                   {getRate(p.id, 0) !== undefined && getRate(p.id, 1) !== undefined && (
-                    <div className="text-center bg-white rounded-lg py-2">
-                      <span className="text-slate-500">Total: </span>
-                      <span className="font-bold">{getRate(p.id, 0) + getRate(p.id, 1)} pts</span>
+                    <div className="text-center tag-paper py-2 mt-3">
+                      <span className="font-hand">Total: </span>
+                      <span className="font-sketch text-lg">{getRate(p.id, 0) + getRate(p.id, 1)} pts</span>
                     </div>
                   )}
                 </div>
@@ -674,9 +771,9 @@ export default function TwoBirdsOneWord() {
             </div>
           )}
 
-          <p className="text-sm text-center text-slate-400 mb-4">1 = Perfect · 5 = Poor · Lowest wins!</p>
+          <p className="text-sm text-center text-gray-400 mb-4 font-hand">1 = Perfect, 5 = Poor. Lowest wins!</p>
 
-          <button onClick={finishJudging} disabled={!allRated && toJudge.length > 0} className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold disabled:opacity-50">
+          <button onClick={() => actions.finishJudging()} disabled={!allRated && toJudge.length > 0} className="w-full btn-paper btn-accent py-3 rounded-sm font-hand text-lg">
             Reveal Results
           </button>
         </div>
@@ -686,23 +783,25 @@ export default function TwoBirdsOneWord() {
 
   // Judging - Player
   if (screen === 'judging' && !isHost) {
-    const host = players.find(p => p.isHost);
+    const host = gameState?.players?.find(p => p.isHost);
     return (
-      <div className="min-h-screen bg-indigo-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-          <div className="text-5xl mb-4">⚖️</div>
-          <h2 className="text-xl font-bold mb-2">Judging...</h2>
-          <p className="text-slate-500 mb-4">{host?.name} is rating submissions</p>
+      <div className="min-h-screen paper-bg flex items-center justify-center p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="paper-card rounded-sm p-8 max-w-md w-full text-center" style={{ transform: 'rotate(0.3deg)' }}>
+          <h2 className="font-sketch text-3xl mb-2">Judging...</h2>
+          <div className="pencil-line w-24 mx-auto mb-4"></div>
+          <p className="text-gray-500 mb-4 font-hand">{host?.name} is rating submissions</p>
           
           <div className="flex justify-center gap-2 mb-4">
-            <span className="text-sm text-slate-500">Your wins:</span>
-            <WinDots playerId={currentPlayerId} />
+            <span className="text-sm text-gray-500 font-hand">Your wins:</span>
+            <WinDots odplayerId={playerId} />
           </div>
 
           {hasSubmitted && (
-            <div className="bg-indigo-50 rounded-xl p-4">
-              <p className="text-sm text-slate-500">Your word</p>
-              <p className="text-xl font-bold text-indigo-600">"{submissions[currentPlayerId]}"</p>
+            <div className="hand-drawn-box p-4 bg-white">
+              <p className="text-sm text-gray-500 font-hand">Your word</p>
+              <p className="font-sketch text-2xl">"{submissions[playerId]}"</p>
             </div>
           )}
         </div>
@@ -713,39 +812,41 @@ export default function TwoBirdsOneWord() {
   // Results - Host
   if (screen === 'results' && isHost) {
     return (
-      <div className="min-h-screen bg-amber-50 p-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6">
-          <p className="text-sm text-amber-600 font-medium mb-2">HOST VIEW</p>
-          <h2 className="text-2xl font-bold mb-4">Round {roundNumber} Results</h2>
+      <div className="min-h-screen paper-bg p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(-0.3deg)' }}>
+          <p className="text-sm text-gray-500 font-hand mb-2">Host View</p>
+          <h2 className="font-sketch text-3xl mb-4">Round {gameState.roundNumber} Results</h2>
 
           {roundResults.length > 0 && (
-            <div className="bg-yellow-100 border-2 border-yellow-400 rounded-xl p-4 mb-4 text-center">
-              <p className="text-sm text-yellow-700">Round Winner</p>
-              <p className="text-xl font-bold text-yellow-800">{roundResults[0].name}</p>
-              <p className="text-yellow-600">"{roundResults[0].word}" — {roundResults[0].total} pts ({roundResults[0].r1}+{roundResults[0].r2})</p>
+            <div className="hand-drawn-box p-4 mb-4 bg-white text-center" style={{ transform: 'rotate(0.3deg)' }}>
+              <p className="text-sm text-gray-500 font-hand">Round Winner</p>
+              <p className="font-sketch text-2xl">{roundResults[0].name}</p>
+              <p className="font-hand text-gray-600">"{roundResults[0].word}" — {roundResults[0].total} pts ({roundResults[0].r1}+{roundResults[0].r2})</p>
             </div>
           )}
 
           <div className="mb-6">
-            <h3 className="font-semibold mb-3">Round Scores</h3>
-            <div className="bg-slate-50 rounded-xl p-3 mb-3 text-center text-sm">
-              <span className="text-indigo-600 font-medium">{word1}</span>
-              <span className="mx-2 text-slate-400">&</span>
-              <span className="text-purple-600 font-medium">{word2}</span>
+            <h3 className="font-hand text-lg mb-3">Round Scores</h3>
+            <div className="hand-drawn-box-alt p-3 mb-3 text-center bg-white">
+              <span className="font-sketch">{gameState.words[0]}</span>
+              <span className="mx-2 text-gray-400 font-hand">&</span>
+              <span className="font-sketch">{gameState.words[1]}</span>
             </div>
             <div className="space-y-2">
               {roundResults.map((r, i) => (
-                <div key={r.id} className={`flex justify-between p-3 rounded-xl ${i === 0 ? 'bg-green-50 border border-green-200' : 'bg-slate-50'}`}>
+                <div key={r.id} className={`flex justify-between p-3 ${i === 0 ? 'hand-drawn-box bg-white' : 'tag-paper'}`} style={{ transform: `rotate(${i % 2 === 0 ? -0.2 : 0.3}deg)` }}>
                   <div className="flex items-center gap-3">
-                    <span className={`font-bold ${i === 0 ? 'text-green-600' : 'text-slate-400'}`}>#{i+1}</span>
+                    <span className="font-hand text-gray-400">#{i+1}</span>
                     <div>
-                      <p className="font-semibold">{r.name}</p>
-                      <p className="text-indigo-600 text-sm">"{r.word}"</p>
+                      <p className="font-hand">{r.name}</p>
+                      <p className="text-sm text-gray-500 font-hand">"{r.word}"</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold">{r.total}</p>
-                    <p className="text-xs text-slate-400">{r.r1}+{r.r2}</p>
+                    <p className="font-sketch text-xl">{r.total}</p>
+                    <p className="text-xs text-gray-400 font-hand">{r.r1}+{r.r2}</p>
                   </div>
                 </div>
               ))}
@@ -756,7 +857,7 @@ export default function TwoBirdsOneWord() {
             <Scoreboard />
           </div>
 
-          <button onClick={startPreRound} disabled={isLoadingWords} className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold disabled:opacity-50">
+          <button onClick={handleStartPreRound} disabled={isLoadingWords} className="w-full btn-paper btn-accent py-3 rounded-sm font-hand text-lg">
             {isLoadingWords ? 'Loading...' : 'Next Round'}
           </button>
         </div>
@@ -766,53 +867,55 @@ export default function TwoBirdsOneWord() {
 
   // Results - Player
   if (screen === 'results' && !isHost) {
-    const myResult = roundResults.find(r => r.id === currentPlayerId);
-    const myRank = roundResults.findIndex(r => r.id === currentPlayerId) + 1;
+    const myResult = roundResults.find(r => r.id === playerId);
+    const myRank = roundResults.findIndex(r => r.id === playerId) + 1;
 
     return (
-      <div className="min-h-screen bg-indigo-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full">
-          <h2 className="text-2xl font-bold text-center mb-2">Round {roundNumber} Results</h2>
+      <div className="min-h-screen paper-bg flex items-center justify-center p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full" style={{ transform: 'rotate(0.2deg)' }}>
+          <h2 className="font-sketch text-3xl text-center mb-2">Round {gameState.roundNumber} Results</h2>
+          <div className="pencil-line w-24 mx-auto mb-4"></div>
 
           {myRank === 1 && (
-            <div className="bg-green-100 border-2 border-green-400 rounded-xl p-4 mb-4 text-center">
-              <p className="text-2xl">🎉</p>
-              <p className="text-green-700 font-bold">You won this round!</p>
+            <div className="hand-drawn-box p-4 mb-4 bg-white text-center" style={{ transform: 'rotate(-0.3deg)' }}>
+              <p className="font-sketch text-2xl text-green-700">You won this round!</p>
             </div>
           )}
 
           {myResult && myRank !== 1 && (
-            <div className="text-center p-4 rounded-xl mb-4 bg-slate-50">
-              <p className="text-sm text-slate-500">You placed</p>
-              <p className="text-4xl font-bold">#{myRank}</p>
-              <p className="text-indigo-600 mt-1">"{myResult.word}" — {myResult.total} pts</p>
+            <div className="text-center p-4 tag-paper mb-4">
+              <p className="text-sm text-gray-500 font-hand">You placed</p>
+              <p className="font-sketch text-4xl">#{myRank}</p>
+              <p className="font-hand text-gray-600">"{myResult.word}" — {myResult.total} pts</p>
             </div>
           )}
 
           <div className="mb-4">
-            <h3 className="font-semibold mb-2 text-sm">Round Scores</h3>
+            <h3 className="font-hand text-lg mb-2">Round Scores</h3>
             <div className="space-y-2">
               {roundResults.map((r, i) => (
-                <div key={r.id} className={`flex justify-between p-3 rounded-lg ${r.id === currentPlayerId ? 'bg-indigo-100 border border-indigo-300' : i === 0 ? 'bg-green-50 border border-green-200' : 'bg-slate-50'}`}>
+                <div key={r.id} className={`flex justify-between p-3 ${r.id === playerId ? 'hand-drawn-box bg-white' : i === 0 ? 'hand-drawn-box-alt bg-white' : 'tag-paper'}`} style={{ transform: `rotate(${i % 2 === 0 ? -0.2 : 0.2}deg)` }}>
                   <div className="flex items-center gap-3">
-                    <span className={`font-bold ${i === 0 ? 'text-green-600' : 'text-slate-400'}`}>#{i+1}</span>
+                    <span className="font-hand text-gray-400">#{i+1}</span>
                     <div>
-                      <span className="font-medium">{r.name}</span>
-                      <p className="text-xs text-indigo-600">"{r.word}"</p>
+                      <span className="font-hand">{r.name}</span>
+                      <p className="text-xs text-gray-500 font-hand">"{r.word}"</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold">{r.total}</span>
-                    <p className="text-xs text-slate-400">{r.r1}+{r.r2}</p>
+                    <span className="font-sketch text-lg">{r.total}</span>
+                    <p className="text-xs text-gray-400 font-hand">{r.r1}+{r.r2}</p>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <Scoreboard highlight={currentPlayerId} />
+          <Scoreboard highlight={playerId} />
 
-          <p className="text-center text-slate-500 mt-4 text-sm">Waiting for next round...</p>
+          <p className="text-center text-gray-500 mt-4 text-sm font-hand">Waiting for next round...</p>
         </div>
       </div>
     );
@@ -820,36 +923,44 @@ export default function TwoBirdsOneWord() {
 
   // Game Over
   if (screen === 'gameover') {
-    const isWinner = winner?.id === currentPlayerId;
+    const isWinner = gameState?.winner?.id === playerId;
     return (
-      <div className={`min-h-screen ${isHost ? 'bg-amber-50' : 'bg-indigo-50'} flex items-center justify-center p-4`}>
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full text-center">
-          <div className="text-6xl mb-4">{isWinner ? '🎉' : '🏆'}</div>
-          <h2 className="text-3xl font-bold mb-2">{isWinner ? 'You Win!' : 'Game Over!'}</h2>
-          <p className="text-xl text-slate-600 mb-6">
-            <span className="font-bold text-indigo-600">{winner?.name}</span> wins!
+      <div className="min-h-screen paper-bg flex items-center justify-center p-4">
+        <ConnectionStatus />
+        <ErrorToast />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full text-center" style={{ transform: 'rotate(-0.4deg)' }}>
+          <h2 className="font-sketch text-4xl mb-2">{isWinner ? 'You Win!' : 'Game Over'}</h2>
+          <div className="pencil-line w-32 mx-auto mb-4"></div>
+          <p className="font-hand text-xl text-gray-600 mb-6">
+            {gameState?.winner?.name} wins the game!
           </p>
 
-          <div className="bg-slate-50 rounded-xl p-4 mb-6">
-            <h3 className="font-semibold mb-3">Final Standings</h3>
+          <div className="hand-drawn-box p-4 mb-6 bg-white">
+            <h3 className="font-hand text-lg mb-3">Final Standings</h3>
             <div className="space-y-2">
               {Object.entries(roundWins)
                 .sort(([,a], [,b]) => b - a)
-                .map(([id, wins]) => {
-                  const p = players.find(pl => pl.id === id);
+                .map(([id, wins], i) => {
+                  const p = gameState?.players?.find(pl => pl.id === id);
                   return (
-                    <div key={id} className="flex justify-between">
-                      <span>{p?.name}</span>
-                      <span className="font-bold">{wins} wins</span>
+                    <div key={id} className="flex justify-between tag-paper p-2" style={{ transform: `rotate(${i % 2 === 0 ? -0.3 : 0.3}deg)` }}>
+                      <span className="font-hand">{p?.name}</span>
+                      <span className="font-sketch">{wins} {wins === 1 ? 'win' : 'wins'}</span>
                     </div>
                   );
                 })}
             </div>
           </div>
 
-          <button onClick={resetGame} className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold">
-            Play Again
-          </button>
+          {isHost ? (
+            <button onClick={handleResetGame} className="w-full btn-paper btn-dark py-3 rounded-sm font-hand text-lg">
+              Play Again
+            </button>
+          ) : (
+            <button onClick={handleBackToLobby} className="w-full btn-paper btn-dark py-3 rounded-sm font-hand text-lg">
+              Back to Lobby
+            </button>
+          )}
         </div>
       </div>
     );
