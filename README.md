@@ -18,7 +18,6 @@ Success!
 - Aesthetics improvement- logo, font, css stuff
 - Resolve the component monolith
 - QoL improvements for any oddities(back button, resolving notifications(eg "Host has left the game")
-- Proper deployment
+- Proper deployment - Railway looks like the best option
 - Fun domain name
-- Infrastructure to scale to have many instances of game at once(deployment maybe fixes this)
 
