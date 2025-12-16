@@ -14,6 +14,7 @@ Success!
 
 ## TODO:
 - No ties allowed
+- Reasonable word dictionary (lots of obscure words as of right now)
 - Aesthetics improvement- logo, font, css stuff
 - Resolve the component monolith
 - QoL improvements for any oddities(back button, resolving notifications(eg "Host has left the game")
