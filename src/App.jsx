@@ -150,7 +150,35 @@ const paperStyles = `
     height: 8px;
     border-radius: 50%;
   }
+  
+  .notification {
+    animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+  }
+  
+  @keyframes slideIn {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  
+  @keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
 `;
+
+// Common words list (fallback)
+const COMMON_WORDS = [
+  'apple', 'beach', 'bread', 'chair', 'dance', 'dream', 'earth', 'flame', 'glass', 'grain',
+  'grape', 'grass', 'heart', 'honey', 'house', 'juice', 'laugh', 'lemon', 'light', 'maple',
+  'metal', 'money', 'moon', 'music', 'night', 'ocean', 'paint', 'paper', 'peace', 'phone',
+  'piano', 'plant', 'queen', 'radio', 'river', 'salad', 'sheep', 'shell', 'shirt', 'sleep',
+  'smile', 'smoke', 'snake', 'snow', 'space', 'spice', 'spine', 'sport', 'stage', 'stamp',
+  'star', 'steam', 'steel', 'stone', 'storm', 'story', 'stove', 'sugar', 'table', 'taste',
+  'tiger', 'toast', 'tower', 'train', 'treat', 'trend', 'tribe', 'truck', 'trust', 'truth',
+  'urban', 'value', 'video', 'voice', 'waste', 'watch', 'water', 'whale', 'wheat', 'wheel',
+  'white', 'whole', 'world', 'youth', 'angel', 'brain', 'brick', 'brush', 'candy', 'cards',
+  'charm', 'chess', 'child', 'chips', 'city', 'cloud', 'clown', 'coach', 'coast', 'coral'
+];
 
 export default function TwoBirdsOneWord() {
   const { isConnected, playerId, gameState, error, timeLeft, actions } = useGameSocket();
@@ -160,10 +188,10 @@ export default function TwoBirdsOneWord() {
   const [gameCode, setGameCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [inputWord, setInputWord] = useState('');
-  const [localWords, setLocalWords] = useState(['', '']);
   const [isLoadingWords, setIsLoadingWords] = useState(false);
   const [localSettings, setLocalSettings] = useState({ roundLength: 30, roundsToWin: 3 });
   const [showSettings, setShowSettings] = useState(false);
+  const [notifications, setNotifications] = useState([]);
 
   // Inject styles
   useEffect(() => {
@@ -177,18 +205,72 @@ export default function TwoBirdsOneWord() {
   useEffect(() => {
     if (gameState) {
       setScreen(gameState.state);
-      if (gameState.words) {
-        setLocalWords(gameState.words);
-      }
       if (gameState.settings) {
         setLocalSettings(gameState.settings);
       }
     }
   }, [gameState]);
 
+  // Handle notifications from error (host left, etc.)
+  useEffect(() => {
+    if (error) {
+      addNotification(error, 'error');
+      
+      // If it's a host left error, redirect to lobby after showing notification
+      if (error.includes('host') && error.includes('left')) {
+        setTimeout(() => {
+          setScreen('lobby');
+          setGameCode('');
+          setUsername('');
+        }, 2000);
+      }
+    }
+  }, [error]);
+
+  // Track player changes for notifications
+  const prevPlayersRef = React.useRef([]);
+  const prevPlayerCountRef = React.useRef(0);
+  
+  useEffect(() => {
+    if (gameState?.players) {
+      const prevPlayers = prevPlayersRef.current;
+      const currentPlayers = gameState.players;
+      const activeCurrent = currentPlayers.filter(p => !p.isHost);
+      const activePrev = prevPlayers.filter(p => !p.isHost);
+      
+      // Check for players who left (only if we had players before)
+      if (activePrev.length > 0) {
+        activePrev.forEach(prev => {
+          if (!activeCurrent.find(p => p.id === prev.id)) {
+            addNotification(`${prev.name} left the game`, 'info');
+          }
+        });
+      }
+      
+      // Check for new players who joined (only if we had players before to avoid initial load)
+      if (prevPlayerCountRef.current > 0) {
+        activeCurrent.forEach(curr => {
+          if (!activePrev.find(p => p.id === curr.id)) {
+            addNotification(`${curr.name} joined the game`, 'success');
+          }
+        });
+      }
+      
+      prevPlayersRef.current = currentPlayers;
+      prevPlayerCountRef.current = currentPlayers.length;
+    }
+  }, [gameState?.players]);
+
+  const addNotification = (message, type = 'info') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 3000);
+  };
+
   // Derived state
   const isHost = playerId && gameState?.hostId === playerId;
-  const currentPlayer = gameState?.players?.find(p => p.id === playerId);
   const activePlayers = gameState?.players?.filter(p => !p.isHost) || [];
   const hasSubmitted = Boolean(gameState?.submissions?.[playerId]);
   const roundWins = gameState?.roundWins || {};
@@ -197,18 +279,29 @@ export default function TwoBirdsOneWord() {
   const ratings = gameState?.ratings || {};
   const roundResults = gameState?.roundResults || [];
 
+  // Fetch words from Datamuse API (common words only)
   const fetchWords = async () => {
     setIsLoadingWords(true);
     try {
-      const res = await fetch('https://random-word-api.herokuapp.com/word?number=2&length=5');
-      const words = await res.json();
-      return [words[0], words[1]];
+      const res = await fetch('https://api.datamuse.com/words?ml=thing&max=100&md=f');
+      const data = await res.json();
+      
+      const goodWords = data
+        .filter(w => {
+          const freq = w.tags?.find(t => t.startsWith('f:'));
+          const freqValue = freq ? parseFloat(freq.split(':')[1]) : 0;
+          return w.word.length >= 4 && w.word.length <= 6 && freqValue > 10 && /^[a-z]+$/.test(w.word);
+        })
+        .map(w => w.word);
+      
+      if (goodWords.length >= 2) {
+        const shuffled = goodWords.sort(() => Math.random() - 0.5);
+        return [shuffled[0], shuffled[1]];
+      }
+      throw new Error('Not enough words');
     } catch {
-      const fallback = ['ocean', 'fire', 'dream', 'stone', 'cloud', 'river', 'flame', 'storm'];
-      return [
-        fallback[Math.floor(Math.random() * fallback.length)],
-        fallback[Math.floor(Math.random() * fallback.length)]
-      ];
+      const shuffled = [...COMMON_WORDS].sort(() => Math.random() - 0.5);
+      return [shuffled[0], shuffled[1]];
     } finally {
       setIsLoadingWords(false);
     }
@@ -262,6 +355,11 @@ export default function TwoBirdsOneWord() {
     setScreen('lobby');
     setGameCode('');
     setUsername('');
+    window.location.reload();
+  };
+
+  const handleLeaveGame = () => {
+    handleBackToLobby();
   };
 
   // Components
@@ -273,16 +371,38 @@ export default function TwoBirdsOneWord() {
     </div>
   );
 
+  const LeaveButton = () => (
+    <button 
+      onClick={handleLeaveGame} 
+      className="absolute top-4 left-4 btn-paper px-3 py-1 rounded-sm font-hand text-sm z-10"
+    >
+      ← Leave
+    </button>
+  );
+
   const ConnectionStatus = () => (
-    <div className="fixed top-4 right-4 flex items-center gap-2 tag-paper px-3 py-1">
+    <div className="fixed top-4 right-4 flex items-center gap-2 tag-paper px-3 py-1 z-50">
       <div className={`connection-dot ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
       <span className="font-hand text-sm">{isConnected ? 'Connected' : 'Disconnected'}</span>
     </div>
   );
 
-  const ErrorToast = () => error && (
-    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 hand-drawn-box bg-red-100 px-4 py-2">
-      <span className="font-hand text-red-700">{error}</span>
+  const Notifications = () => (
+    <div className="fixed top-16 right-4 space-y-2 z-50">
+      {notifications.map(n => (
+        <div 
+          key={n.id} 
+          className={`notification hand-drawn-box px-4 py-2 ${
+            n.type === 'error' ? 'bg-red-100' : 
+            n.type === 'success' ? 'bg-green-100' : 'bg-blue-100'
+          }`}
+        >
+          <span className={`font-hand ${
+            n.type === 'error' ? 'text-red-700' : 
+            n.type === 'success' ? 'text-green-700' : 'text-blue-700'
+          }`}>{n.message}</span>
+        </div>
+      ))}
     </div>
   );
 
@@ -327,8 +447,16 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg flex items-center justify-center p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="paper-card rounded-sm p-8 max-w-md w-full" style={{ transform: 'rotate(-0.5deg)' }}>
+        <Notifications />
+        <div className="paper-card rounded-sm p-8 max-w-md w-full relative" style={{ transform: 'rotate(-0.5deg)' }}>
+          {isJoining && (
+            <button 
+              onClick={() => setIsJoining(false)} 
+              className="absolute top-4 left-4 btn-paper px-3 py-1 rounded-sm font-hand text-sm"
+            >
+              ← Back
+            </button>
+          )}
           <h1 className="font-sketch text-5xl text-center mb-1 text-gray-800">Two Birds</h1>
           <h2 className="font-sketch text-3xl text-center mb-2 text-gray-600">One Word</h2>
           <div className="pencil-line w-32 mx-auto mb-4"></div>
@@ -377,7 +505,6 @@ export default function TwoBirdsOneWord() {
               >
                 Join
               </button>
-              <button onClick={() => setIsJoining(false)} className="w-full text-gray-500 py-2 font-hand">Back</button>
             </div>
           )}
         </div>
@@ -390,9 +517,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(0.3deg)' }}>
-          <div className="flex justify-between items-start mb-4">
+        <Notifications />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6 relative" style={{ transform: 'rotate(0.3deg)' }}>
+          <LeaveButton />
+          <div className="flex justify-between items-start mb-4 pt-8">
             <div>
               <p className="text-sm text-gray-500 font-hand">Host View</p>
               <h2 className="font-sketch text-3xl">Game Lobby</h2>
@@ -475,9 +603,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg flex items-center justify-center p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="paper-card rounded-sm p-8 max-w-md w-full text-center" style={{ transform: 'rotate(-0.4deg)' }}>
-          <h2 className="font-sketch text-3xl mb-2">You're In!</h2>
+        <Notifications />
+        <div className="paper-card rounded-sm p-8 max-w-md w-full text-center relative" style={{ transform: 'rotate(-0.4deg)' }}>
+          <LeaveButton />
+          <h2 className="font-sketch text-3xl mb-2 pt-6">You're In!</h2>
           <div className="pencil-line w-24 mx-auto mb-4"></div>
           <p className="text-gray-500 mb-6 font-hand text-lg">Waiting for {host?.name} to start...</p>
           <div className="hand-drawn-box p-4 bg-white">
@@ -499,9 +628,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(-0.2deg)' }}>
-          <div className="flex justify-between items-start mb-4">
+        <Notifications />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6 relative" style={{ transform: 'rotate(-0.2deg)' }}>
+          <LeaveButton />
+          <div className="flex justify-between items-start mb-4 pt-8">
             <div>
               <p className="text-sm text-gray-500 font-hand">Host View</p>
               <h2 className="font-sketch text-3xl">Round {gameState.roundNumber}</h2>
@@ -548,9 +678,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg flex items-center justify-center p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="paper-card rounded-sm p-8 max-w-lg w-full text-center" style={{ transform: 'rotate(0.3deg)' }}>
-          <p className="text-sm text-gray-500 font-hand mb-2">Round {gameState.roundNumber}</p>
+        <Notifications />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full text-center relative" style={{ transform: 'rotate(0.3deg)' }}>
+          <LeaveButton />
+          <p className="text-sm text-gray-500 font-hand mb-2 pt-6">Round {gameState.roundNumber}</p>
           <h2 className="font-sketch text-3xl mb-4">Get Ready!</h2>
 
           <div className="flex justify-center gap-2 mb-6">
@@ -580,9 +711,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(0.2deg)' }}>
-          <div className="flex justify-between items-center mb-4">
+        <Notifications />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6 relative" style={{ transform: 'rotate(0.2deg)' }}>
+          <LeaveButton />
+          <div className="flex justify-between items-center mb-4 pt-8">
             <div>
               <p className="text-sm text-gray-500 font-hand">Host View</p>
               <h2 className="font-sketch text-2xl">Round {gameState.roundNumber}</h2>
@@ -634,9 +766,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg flex items-center justify-center p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="paper-card rounded-sm p-8 max-w-lg w-full" style={{ transform: 'rotate(-0.3deg)' }}>
-          <div className="flex justify-between items-center mb-4">
+        <Notifications />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full relative" style={{ transform: 'rotate(-0.3deg)' }}>
+          <LeaveButton />
+          <div className="flex justify-between items-center mb-4 pt-8">
             <div>
               <p className="text-sm text-gray-500 font-hand">Round {gameState.roundNumber}</p>
               <h2 className="font-sketch text-2xl">Submit Your Word!</h2>
@@ -688,13 +821,26 @@ export default function TwoBirdsOneWord() {
   if (screen === 'judging' && isHost) {
     const toJudge = activePlayers.filter(p => submissions[p.id]);
     const allRated = toJudge.every(p => getRate(p.id, 0) !== undefined && getRate(p.id, 1) !== undefined);
+    
+    const scores = toJudge
+      .filter(p => getRate(p.id, 0) !== undefined && getRate(p.id, 1) !== undefined)
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        total: getRate(p.id, 0) + getRate(p.id, 1)
+      }))
+      .sort((a, b) => a.total - b.total);
+    
+    const hasTie = scores.length >= 2 && scores[0].total === scores[1].total;
+    const tiedPlayers = hasTie ? scores.filter(s => s.total === scores[0].total) : [];
 
     return (
       <div className="min-h-screen paper-bg p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(-0.2deg)' }}>
-          <p className="text-sm text-gray-500 font-hand mb-2">Host View</p>
+        <Notifications />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6 relative" style={{ transform: 'rotate(-0.2deg)' }}>
+          <LeaveButton />
+          <p className="text-sm text-gray-500 font-hand mb-2 pt-8">Host View</p>
           <h2 className="font-sketch text-3xl mb-4">Rate Submissions</h2>
 
           <div className="flex justify-center gap-3 mb-4">
@@ -771,10 +917,23 @@ export default function TwoBirdsOneWord() {
             </div>
           )}
 
-          <p className="text-sm text-center text-gray-400 mb-4 font-hand">1 = Perfect, 5 = Poor. Lowest wins!</p>
+          <p className="text-sm text-center text-gray-400 mb-4 font-hand">1 = Perfect, 3 = Poor. Lowest wins!</p>
 
-          <button onClick={() => actions.finishJudging()} disabled={!allRated && toJudge.length > 0} className="w-full btn-paper btn-accent py-3 rounded-sm font-hand text-lg">
-            Reveal Results
+          {hasTie && allRated && (
+            <div className="hand-drawn-box bg-yellow-50 p-4 mb-4 text-center" style={{ transform: 'rotate(0.2deg)' }}>
+              <p className="font-hand text-yellow-800 mb-2">Tie detected! Adjust scores so there's a clear winner.</p>
+              <p className="font-sketch text-yellow-700">
+                {tiedPlayers.map(p => p.name).join(' & ')} tied at {tiedPlayers[0].total} pts
+              </p>
+            </div>
+          )}
+
+          <button 
+            onClick={() => actions.finishJudging()} 
+            disabled={!allRated || hasTie || toJudge.length === 0} 
+            className="w-full btn-paper btn-accent py-3 rounded-sm font-hand text-lg"
+          >
+            {!allRated ? 'Rate all submissions' : hasTie ? 'Break the tie first' : 'Reveal Results'}
           </button>
         </div>
       </div>
@@ -787,9 +946,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg flex items-center justify-center p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="paper-card rounded-sm p-8 max-w-md w-full text-center" style={{ transform: 'rotate(0.3deg)' }}>
-          <h2 className="font-sketch text-3xl mb-2">Judging...</h2>
+        <Notifications />
+        <div className="paper-card rounded-sm p-8 max-w-md w-full text-center relative" style={{ transform: 'rotate(0.3deg)' }}>
+          <LeaveButton />
+          <h2 className="font-sketch text-3xl mb-2 pt-6">Judging...</h2>
           <div className="pencil-line w-24 mx-auto mb-4"></div>
           <p className="text-gray-500 mb-4 font-hand">{host?.name} is rating submissions</p>
           
@@ -814,9 +974,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6" style={{ transform: 'rotate(-0.3deg)' }}>
-          <p className="text-sm text-gray-500 font-hand mb-2">Host View</p>
+        <Notifications />
+        <div className="max-w-2xl mx-auto paper-card rounded-sm p-6 relative" style={{ transform: 'rotate(-0.3deg)' }}>
+          <LeaveButton />
+          <p className="text-sm text-gray-500 font-hand mb-2 pt-8">Host View</p>
           <h2 className="font-sketch text-3xl mb-4">Round {gameState.roundNumber} Results</h2>
 
           {roundResults.length > 0 && (
@@ -873,9 +1034,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg flex items-center justify-center p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="paper-card rounded-sm p-8 max-w-lg w-full" style={{ transform: 'rotate(0.2deg)' }}>
-          <h2 className="font-sketch text-3xl text-center mb-2">Round {gameState.roundNumber} Results</h2>
+        <Notifications />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full relative" style={{ transform: 'rotate(0.2deg)' }}>
+          <LeaveButton />
+          <h2 className="font-sketch text-3xl text-center mb-2 pt-6">Round {gameState.roundNumber} Results</h2>
           <div className="pencil-line w-24 mx-auto mb-4"></div>
 
           {myRank === 1 && (
@@ -927,9 +1089,10 @@ export default function TwoBirdsOneWord() {
     return (
       <div className="min-h-screen paper-bg flex items-center justify-center p-4">
         <ConnectionStatus />
-        <ErrorToast />
-        <div className="paper-card rounded-sm p-8 max-w-lg w-full text-center" style={{ transform: 'rotate(-0.4deg)' }}>
-          <h2 className="font-sketch text-4xl mb-2">{isWinner ? 'You Win!' : 'Game Over'}</h2>
+        <Notifications />
+        <div className="paper-card rounded-sm p-8 max-w-lg w-full text-center relative" style={{ transform: 'rotate(-0.4deg)' }}>
+          <LeaveButton />
+          <h2 className="font-sketch text-4xl mb-2 pt-6">{isWinner ? 'You Win!' : 'Game Over'}</h2>
           <div className="pencil-line w-32 mx-auto mb-4"></div>
           <p className="font-hand text-xl text-gray-600 mb-6">
             {gameState?.winner?.name} wins the game!
