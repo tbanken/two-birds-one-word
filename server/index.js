@@ -9,7 +9,7 @@ app.use(cors());
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
 cors: {
-    origin: ["https://two-birds-one-word.onrender.com",
+    origin: ["https://two-birds-one-word-1.onrender.com",
             "http://localhost:5173"
     ],
     methods: ["GET", "POST"]
