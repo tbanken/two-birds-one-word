@@ -181,9 +181,18 @@ socket.on('joinGame', ({ code, playerName }) => {
     return;
     }
 
+    // Check for duplicate names
+    const trimmedName = playerName.trim();
+    const existingNames = game.players.map(p => p.name);
+    
+    if (existingNames.includes(trimmedName)) {
+    socket.emit('error', { message: 'That name is already taken. Please choose a different name.' });
+    return;
+    }
+
     const player = {
     id: socket.id,
-    name: playerName,
+    name: trimmedName,
     isHost: false
     };
 
