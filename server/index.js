@@ -90,8 +90,15 @@ game.timerInterval = setInterval(() => {
     if (game.timeLeft <= 0) {
     clearInterval(game.timerInterval);
     game.timerInterval = null;
-    game.state = 'judging';
-    broadcastGameState(gameCode);
+    
+    // Give a brief grace period for last-second submissions
+    setTimeout(() => {
+        const currentGame = games.get(gameCode);
+        if (currentGame && currentGame.state === 'playing') {
+        currentGame.state = 'judging';
+        broadcastGameState(gameCode);
+        }
+    }, 500); // 500ms grace period
     }
 }, 1000);
 }
