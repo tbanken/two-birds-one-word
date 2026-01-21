@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
-const SERVER_URL = 'http://localhost:3001';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
 
 export function useGameSocket() {
 const socketRef = useRef(null);
@@ -13,7 +13,7 @@ const [timeLeft, setTimeLeft] = useState(0);
 
 // Initialize socket connection
 useEffect(() => {
-    socketRef.current = io(SERVER_URL);
+    socketRef.current = io(WS_URL);
 
     socketRef.current.on('connect', () => {
     console.log('Connected to server');
