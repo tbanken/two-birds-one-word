@@ -553,7 +553,7 @@ export default function TwoBirdsOneWord() {
           <LeaveButton />
           <div className="flex justify-between items-start mb-4 pt-8">
             <div>
-              <p className="text-sm text-gray-500 font-hand">Host View</p>
+              <p className="text-sm text-gray-500 font-hand">Host: {username}</p>
               <h2 className="font-sketch text-3xl">Game Lobby</h2>
             </div>
             <div className="text-right">
@@ -637,7 +637,8 @@ export default function TwoBirdsOneWord() {
         <Notifications />
         <div className="paper-card rounded-sm p-8 max-w-md w-full text-center relative" style={{ transform: 'rotate(-0.4deg)' }}>
           <LeaveButton />
-          <h2 className="font-sketch text-3xl mb-2 pt-6">You're In!</h2>
+          <p className="text-sm text-gray-500 font-hand pt-6">Host: {host?.name}</p>
+          <h2 className="font-sketch text-3xl mb-2 pt-2">You're In!</h2>
           <div className="pencil-line w-24 mx-auto mb-4"></div>
           <p className="text-gray-500 mb-6 font-hand text-lg">Waiting for {host?.name} to start...</p>
           <div className="hand-drawn-box p-4 bg-white">
