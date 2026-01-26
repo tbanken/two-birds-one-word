@@ -11,7 +11,7 @@ const io = new Server(httpServer, {
 cors: {
     origin: ["https://two-birds-one-word-1.onrender.com",
             "http://localhost:5173",
-            "https://twobirdsoneword.com/",
+            "https://twobirdsoneword.com",
 
     ],
     methods: ["GET", "POST"]
