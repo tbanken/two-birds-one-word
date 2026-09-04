@@ -1,23 +1,52 @@
 # TWO BIRDS ONE WORD
 
+**[Play Now](https://twobirdsoneword.com/)**
+
 ## Instructions:
-The host chooses two words, generated at random. The players must choose one word that associates best with both of the words chosen by the host. The players must then explain the association to the host, and the host will judge each player, and crown a winner. Once a player wins three rounds, the player wins the game.
+
+The host starts a game and (optionally) picks a judge. Two words are generated based on the selected word mode (Easy / Medium / Hard). Players submit one word that connects both prompts. The judge rates each connection anonymously (names hidden and shuffled), then results are revealed. First to the set number of round wins takes the game.
+
+## Features:
+
+- **Word modes:** Easy, Medium, and Hard curated lists (plus Datamuse)
+- **Flexible judge:** Host can assign any player as judge (judge does not submit)
+- **Anonymous judging:** Submissions shown as Entry A/B/C… in random order
+- **Auto-advance:** Round ends when everyone has submitted
+- **Results for everyone:** Prompt words and scores shown on results and game over
 
 ## Local run instructions:
-Clone the repo locally. 
-Then run `node index.js` inside the "server" folder. 
-Then `npm run dev` inside the main folder.
-Open browser in `http://localhost:5173/`
-Success!
 
-## Hosted server: TBD
+1. Clone the repo:
+
+```bash
+   git clone https://github.com/tbanken/two-birds-one-word
+   cd two-birds-one-word
+```
+
+2. Start the server:
+
+```bash
+cd server
+npm install
+node index.js
+```
+
+3. In a new terminal, start the frontend:
+
+```bash
+cd two-birds-one-word
+npm install
+npm run dev
+```
+
+4. Open browser in `http://localhost:5173/`
+
+## Hosted:
+
+- Play at [twobirdsoneword.com](https://twobirdsoneword.com/)
+- Backend hosted on Render
 
 ## TODO:
-- No ties allowed
-- Reasonable word dictionary (lots of obscure words as of right now)
-- Aesthetics improvement- logo, font, css stuff
-- Resolve the component monolith
-- QoL improvements for any oddities(back button, resolving notifications(eg "Host has left the game")
-- Proper deployment - Railway looks like the best option
-- Fun domain name
 
+- Aesthetics improvement — logo, font, css stuff
+- QoL improvements for any oddities (back button, notifications)

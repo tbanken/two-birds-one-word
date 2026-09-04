@@ -10,6 +10,20 @@ const [playerId, setPlayerId] = useState(null);
 const [gameState, setGameState] = useState(null);
 const [error, setError] = useState(null);
 const [timeLeft, setTimeLeft] = useState(0);
+const [notifications, setNotifications] = useState([]);
+
+const addNotification = useCallback((message, type = 'info') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 3000);
+}, []);
+
+const addNotificationRef = useRef(addNotification);
+useEffect(() => {
+    addNotificationRef.current = addNotification;
+}, [addNotification]);
 
 // Initialize socket connection
 useEffect(() => {
@@ -25,11 +39,11 @@ useEffect(() => {
     setIsConnected(false);
     });
 
-    socketRef.current.on('gameCreated', ({ code, playerId }) => {
+    socketRef.current.on('gameCreated', ({ playerId }) => {
     setPlayerId(playerId);
     });
 
-    socketRef.current.on('gameJoined', ({ code, playerId }) => {
+    socketRef.current.on('gameJoined', ({ playerId }) => {
     setPlayerId(playerId);
     });
 
@@ -44,13 +58,16 @@ useEffect(() => {
 
     socketRef.current.on('error', ({ message }) => {
     setError(message);
+    addNotificationRef.current(message, 'error');
     setTimeout(() => setError(null), 3000);
     });
 
     // Host left - game ends for everyone
-    socketRef.current.on('hostLeft', ({ message, hostName }) => {
+    socketRef.current.on('hostLeft', ({ hostName }) => {
     console.log('Host left the game');
-    setError(`${hostName || 'Host'} left the game. Game ended.`);
+    const hostLeftMessage = `${hostName || 'Host'} left the game. Game ended.`;
+    setError(hostLeftMessage);
+    addNotificationRef.current(hostLeftMessage, 'error');
     setGameState(null);
     setPlayerId(null);
     });
@@ -59,17 +76,15 @@ useEffect(() => {
     socketRef.current.on('gameEndedNotEnoughPlayers', ({ message }) => {
     console.log('Game ended - not enough players');
     setError(message);
-    // Game state will be updated via gameState event
+    addNotificationRef.current(message, 'error');
     });
 
-    // Player joined notification (optional - App.jsx handles via state diff)
     socketRef.current.on('playerJoined', ({ playerName }) => {
-    console.log(`${playerName} joined the game`);
+    addNotificationRef.current(`${playerName} joined the game`, 'success');
     });
 
-    // Player left notification (optional - App.jsx handles via state diff)
     socketRef.current.on('playerLeft', ({ playerName }) => {
-    console.log(`${playerName} left the game`);
+    addNotificationRef.current(`${playerName} left the game`, 'info');
     });
 
     return () => {
@@ -86,8 +101,12 @@ const joinGame = useCallback((code, playerName) => {
     socketRef.current?.emit('joinGame', { code, playerName });
 }, []);
 
-const updateSettings = useCallback((roundLength, roundsToWin) => {
-    socketRef.current?.emit('updateSettings', { roundLength, roundsToWin });
+const updateSettings = useCallback((roundLength, roundsToWin, wordMode) => {
+    socketRef.current?.emit('updateSettings', { roundLength, roundsToWin, wordMode });
+}, []);
+
+const setJudge = useCallback((judgeId) => {
+    socketRef.current?.emit('setJudge', { judgeId });
 }, []);
 
 const startPreRound = useCallback((word1, word2) => {
@@ -118,6 +137,10 @@ const finishJudging = useCallback(() => {
     socketRef.current?.emit('finishJudging');
 }, []);
 
+const showGameOver = useCallback(() => {
+    socketRef.current?.emit('showGameOver');
+}, []);
+
 const resetGame = useCallback(() => {
     socketRef.current?.emit('resetGame');
 }, []);
@@ -128,10 +151,12 @@ return {
     gameState,
     error,
     timeLeft,
+    notifications,
     actions: {
     createGame,
     joinGame,
     updateSettings,
+    setJudge,
     startPreRound,
     updateWords,
     startPlaying,
@@ -139,6 +164,7 @@ return {
     endRound,
     submitRating,
     finishJudging,
+    showGameOver,
     resetGame
     }
 };

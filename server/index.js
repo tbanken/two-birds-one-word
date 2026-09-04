@@ -9,10 +9,11 @@ app.use(cors());
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
 cors: {
-    origin: ["https://two-birds-one-word-1.onrender.com",
-            "http://localhost:5173",
+    origin: [
             "https://twobirdsoneword.com",
-
+            "https://www.twobirdsoneword.com",
+            "https://two-birds-one-word-1.onrender.com",
+            "http://localhost:5173"
     ],
     methods: ["GET", "POST"]
 }
@@ -26,10 +27,12 @@ function createGame(hostId, hostName, code) {
 return {
     code,
     hostId,
+    judgeId: hostId,
     players: [{ id: hostId, name: hostName, isHost: true }],
     settings: {
     roundLength: 30,
-    roundsToWin: 3
+    roundsToWin: 3,
+    wordMode: 'easy'
     },
     state: 'waiting', // waiting, preround, playing, judging, results, gameover
     roundNumber: 0,
@@ -39,6 +42,7 @@ return {
     roundWins: {},
     totalPoints: {},
     roundResults: [],
+    judgeOrder: [],
     winner: null,
     timeLeft: 30,
     timerInterval: null
@@ -50,7 +54,26 @@ return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
 function getActivePlayers(game) {
-return game.players.filter(p => !p.isHost);
+return game.players.filter(p => p.id !== game.judgeId);
+}
+
+function shuffleIds(ids) {
+const arr = [...ids];
+for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+}
+return arr;
+}
+
+function enterJudging(game, gameCode) {
+stopTimer(gameCode);
+game.state = 'judging';
+const submittedIds = getActivePlayers(game)
+    .filter(p => game.submissions[p.id])
+    .map(p => p.id);
+game.judgeOrder = shuffleIds(submittedIds);
+broadcastGameState(gameCode);
 }
 
 function broadcastGameState(gameCode) {
@@ -61,6 +84,7 @@ if (!game) return;
 io.to(gameCode).emit('gameState', {
     code: game.code,
     hostId: game.hostId,
+    judgeId: game.judgeId,
     players: game.players,
     settings: game.settings,
     state: game.state,
@@ -71,6 +95,7 @@ io.to(gameCode).emit('gameState', {
     roundWins: game.roundWins,
     totalPoints: game.totalPoints,
     roundResults: game.roundResults,
+    judgeOrder: game.judgeOrder,
     winner: game.winner,
     timeLeft: game.timeLeft
 });
@@ -99,8 +124,7 @@ game.timerInterval = setInterval(() => {
     setTimeout(() => {
         const currentGame = games.get(gameCode);
         if (currentGame && currentGame.state === 'playing') {
-        currentGame.state = 'judging';
-        broadcastGameState(gameCode);
+        enterJudging(currentGame, gameCode);
         }
     }, 500); // 500ms grace period
     }
@@ -141,6 +165,7 @@ if (game.state !== 'waiting' && activePlayers.length < 2) {
     game.submissions = {};
     game.ratings = {};
     game.roundResults = [];
+    game.judgeOrder = [];
     game.winner = null;
     
     broadcastGameState(gameCode);
@@ -219,12 +244,26 @@ socket.on('joinGame', ({ code, playerName }) => {
 });
 
 // Update settings (host only)
-socket.on('updateSettings', ({ roundLength, roundsToWin }) => {
+socket.on('updateSettings', ({ roundLength, roundsToWin, wordMode }) => {
     const game = games.get(socket.gameCode);
     if (!game || game.hostId !== socket.id) return;
 
-    game.settings.roundLength = roundLength;
-    game.settings.roundsToWin = roundsToWin;
+    if (roundLength !== undefined) game.settings.roundLength = roundLength;
+    if (roundsToWin !== undefined) game.settings.roundsToWin = roundsToWin;
+    if (wordMode !== undefined) game.settings.wordMode = wordMode;
+    broadcastGameState(socket.gameCode);
+});
+
+// Set judge (host only, waiting only)
+socket.on('setJudge', ({ judgeId }) => {
+    const game = games.get(socket.gameCode);
+    if (!game || game.hostId !== socket.id) return;
+    if (game.state !== 'waiting') return;
+
+    const judge = game.players.find(p => p.id === judgeId);
+    if (!judge) return;
+
+    game.judgeId = judgeId;
     broadcastGameState(socket.gameCode);
 });
 
@@ -233,15 +272,23 @@ socket.on('startPreRound', ({ word1, word2 }) => {
     const game = games.get(socket.gameCode);
     if (!game || game.hostId !== socket.id) return;
 
+    // Need at least 2 active players (excluding judge)
+    if (getActivePlayers(game).length < 2) {
+    socket.emit('error', { message: 'Need at least 2 players (besides the judge)' });
+    return;
+    }
+
     game.roundNumber++;
     game.words = [word1, word2];
     game.submissions = {};
     game.ratings = {};
+    game.judgeOrder = [];
+    game.winner = null;
     game.state = 'preround';
 
-    // Initialize round wins for new players
+    // Initialize round wins for players who will submit
     game.players.forEach(p => {
-    if (!p.isHost && game.roundWins[p.id] === undefined) {
+    if (p.id !== game.judgeId && game.roundWins[p.id] === undefined) {
         game.roundWins[p.id] = 0;
     }
     });
@@ -268,39 +315,50 @@ socket.on('startPlaying', () => {
     startTimer(socket.gameCode);
 });
 
-// Submit word (players only)
+// Submit word (non-judge players only)
 socket.on('submitWord', ({ word }) => {
     const game = games.get(socket.gameCode);
     if (!game || game.state !== 'playing') return;
+    if (socket.id === game.judgeId) return;
 
     game.submissions[socket.id] = word.toLowerCase().trim();
+
+    // Auto-advance when everyone has submitted
+    const activePlayers = getActivePlayers(game);
+    const allSubmitted = activePlayers.length > 0 &&
+    activePlayers.every(p => game.submissions[p.id]);
+
+    if (allSubmitted) {
+    enterJudging(game, socket.gameCode);
+    } else {
     broadcastGameState(socket.gameCode);
+    }
 });
 
-// End round early (host only)
+// End round early (host or judge)
 socket.on('endRound', () => {
     const game = games.get(socket.gameCode);
-    if (!game || game.hostId !== socket.id) return;
+    if (!game) return;
+    if (game.hostId !== socket.id && game.judgeId !== socket.id) return;
+    if (game.state !== 'playing') return;
 
-    stopTimer(socket.gameCode);
-    game.state = 'judging';
-    broadcastGameState(socket.gameCode);
+    enterJudging(game, socket.gameCode);
 });
 
-// Submit rating (host only)
+// Submit rating (judge only)
 socket.on('submitRating', ({ playerId, wordIndex, rating }) => {
     const game = games.get(socket.gameCode);
-    if (!game || game.hostId !== socket.id) return;
+    if (!game || game.judgeId !== socket.id) return;
 
     const key = playerId + '_' + wordIndex;
     game.ratings[key] = rating;
     broadcastGameState(socket.gameCode);
 });
 
-// Finish judging (host only)
+// Finish judging (judge only) — always show results first, even on game win
 socket.on('finishJudging', () => {
     const game = games.get(socket.gameCode);
-    if (!game || game.hostId !== socket.id) return;
+    if (!game || game.judgeId !== socket.id) return;
 
     const activePlayers = getActivePlayers(game);
 
@@ -327,20 +385,28 @@ socket.on('finishJudging', () => {
     game.totalPoints[r.id] = (game.totalPoints[r.id] || 0) + r.total;
     });
 
-    // Determine round winner
+    // Determine round winner (may also be game winner)
+    game.winner = null;
     if (results.length > 0) {
     const winnerId = results[0].id;
     game.roundWins[winnerId] = (game.roundWins[winnerId] || 0) + 1;
     
     if (game.roundWins[winnerId] >= game.settings.roundsToWin) {
         game.winner = game.players.find(p => p.id === winnerId);
-        game.state = 'gameover';
-        broadcastGameState(socket.gameCode);
-        return;
     }
     }
 
     game.state = 'results';
+    broadcastGameState(socket.gameCode);
+});
+
+// Proceed to game over after results (host only)
+socket.on('showGameOver', () => {
+    const game = games.get(socket.gameCode);
+    if (!game || game.hostId !== socket.id) return;
+    if (!game.winner) return;
+
+    game.state = 'gameover';
     broadcastGameState(socket.gameCode);
 });
 
@@ -357,11 +423,13 @@ socket.on('resetGame', () => {
     game.roundWins = {};
     game.totalPoints = {};
     game.roundResults = [];
+    game.judgeOrder = [];
     game.winner = null;
+    // Keep current judge assignment
 
-    // Reset round wins for all players
+    // Reset round wins for non-judge players
     game.players.forEach(p => {
-    if (!p.isHost) {
+    if (p.id !== game.judgeId) {
         game.roundWins[p.id] = 0;
     }
     });
@@ -383,6 +451,7 @@ socket.on('disconnect', () => {
 
     // Check if this is the host leaving
     const isHost = game.hostId === socket.id;
+    const wasJudge = game.judgeId === socket.id;
     
     // Remove player from game
     game.players = game.players.filter(p => p.id !== socket.id);
@@ -391,6 +460,7 @@ socket.on('disconnect', () => {
     delete game.submissions[socket.id];
     delete game.ratings[socket.id + '_0'];
     delete game.ratings[socket.id + '_1'];
+    game.judgeOrder = game.judgeOrder.filter(id => id !== socket.id);
 
     if (isHost) {
     // Host left - end the game for everyone
@@ -402,12 +472,19 @@ socket.on('disconnect', () => {
     games.delete(gameCode);
     console.log(`Game ${gameCode} ended - host left`);
     } else {
-    // Regular player left
-    // Notify others
-    io.to(gameCode).emit('playerLeft', { 
+    // If judge left, reassign to host
+    if (wasJudge && game.players.length > 0) {
+        game.judgeId = game.hostId;
+        io.to(gameCode).emit('playerLeft', { 
+        playerName: `${playerName} (judge)`, 
+        playerId: socket.id 
+        });
+    } else {
+        io.to(gameCode).emit('playerLeft', { 
         playerName, 
         playerId: socket.id 
-    });
+        });
+    }
     
     // Check if we still have enough players to continue
     const gameEnded = checkPlayerCount(gameCode, playerName);
